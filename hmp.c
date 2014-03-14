@@ -1643,3 +1643,15 @@ void hmp_object_del(Monitor *mon, const QDict *qdict)
     qmp_object_del(id, &err);
     hmp_handle_error(mon, &err);
 }
+
+void hmp_clone(Monitor *mon, const QDict *qdict)
+{
+    const char *uri = qdict_get_str(qdict, "uri");
+    Error *err = NULL;
+
+    monitor_printf(mon, "Clone to uri= %s\n", uri);
+    qmp_clone(uri, &err);
+    if (err) {
+        error_free(err);
+    }
+}

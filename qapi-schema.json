@@ -4420,3 +4420,16 @@
 # Since: 1.7
 ##
 { 'command': 'blockdev-add', 'data': { 'options': 'BlockdevOptions' } }
+
+##
+# @clone:
+#
+# Clone a VM to given uri.
+#
+# @uri: the Uniform Resource Identifier of the destination VM
+#
+# Returns: nothing on success
+#
+# Since: 1.7
+##
+{ 'command': 'clone', 'data': {'uri': 'str'} }

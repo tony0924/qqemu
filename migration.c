@@ -93,6 +93,8 @@ void qemu_start_incoming_migration(const char *uri, Error **errp)
     else if (strstart(uri, "fd:", &p))
         fd_start_incoming_migration(p, errp);
 #endif
+    else if (strstart(uri, "clone:", &p))
+        unix_start_incoming_clone(p, errp);
     else {
         error_setg(errp, "unknown migration protocol: %s", uri);
     }
@@ -697,4 +699,219 @@ void migrate_fd_connect(MigrationState *s)
 
     qemu_thread_create(&s->thread, migration_thread, s,
                        QEMU_THREAD_JOINABLE);
+}
+
+static void *clone_thread(void *opaque)
+{
+    MigrationState *s = opaque;
+    int64_t initial_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+    int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    int64_t initial_bytes = 0;
+    int64_t max_size = 0;
+    int64_t start_time = initial_time;
+    bool old_vm_running = false;
+
+    DPRINTF("beginning savevm\n");
+    qemu_savevm_state_begin(s->file, &s->params);
+
+    s->setup_time = qemu_clock_get_ms(QEMU_CLOCK_HOST) - setup_start;
+    migrate_set_state(s, MIG_STATE_SETUP, MIG_STATE_ACTIVE);
+
+    DPRINTF("setup complete\n");
+
+    while (s->state == MIG_STATE_ACTIVE) {
+        int64_t current_time;
+        uint64_t pending_size;
+
+        if (!qemu_file_rate_limit(s->file)) {
+            DPRINTF("iterate\n");
+            pending_size = qemu_savevm_state_pending(s->file, max_size);
+            DPRINTF("pending size %" PRIu64 " max %" PRIu64 "\n",
+                    pending_size, max_size);
+            if (pending_size && pending_size >= max_size) {
+                qemu_savevm_state_iterate(s->file);
+            } else {
+                int ret;
+
+                DPRINTF("done iterating\n");
+                qemu_mutex_lock_iothread();
+                start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+                qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER);
+                old_vm_running = runstate_is_running();
+
+                ret = vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
+                if (ret >= 0) {
+                    qemu_file_set_rate_limit(s->file, INT64_MAX);
+                    qemu_savevm_state_complete(s->file);
+                }
+                qemu_mutex_unlock_iothread();
+
+                if (ret < 0) {
+                    migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_ERROR);
+                    break;
+                }
+
+                if (!qemu_file_get_error(s->file)) {
+                    migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_COMPLETED);
+                    break;
+                }
+            }
+        }
+
+        if (qemu_file_get_error(s->file)) {
+            migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_ERROR);
+            break;
+        }
+        current_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+        if (current_time >= initial_time + BUFFER_DELAY) {
+            uint64_t transferred_bytes = qemu_ftell(s->file) - initial_bytes;
+            uint64_t time_spent = current_time - initial_time;
+            double bandwidth = transferred_bytes / time_spent;
+            max_size = bandwidth * migrate_max_downtime() / 1000000;
+
+            s->mbps = time_spent ? (((double) transferred_bytes * 8.0) /
+                    ((double) time_spent / 1000.0)) / 1000.0 / 1000.0 : -1;
+
+            DPRINTF("transferred %" PRIu64 " time_spent %" PRIu64
+                    " bandwidth %g max_size %" PRId64 "\n",
+                    transferred_bytes, time_spent, bandwidth, max_size);
+            /* if we haven't sent anything, we don't want to recalculate
+               10000 is a small enough number for our purposes */
+            if (s->dirty_bytes_rate && transferred_bytes > 10000) {
+                s->expected_downtime = s->dirty_bytes_rate / bandwidth;
+            }
+
+            qemu_file_reset_rate_limit(s->file);
+            initial_time = current_time;
+            initial_bytes = qemu_ftell(s->file);
+        }
+        if (qemu_file_rate_limit(s->file)) {
+            /* usleep expects microseconds */
+            g_usleep((initial_time + BUFFER_DELAY - current_time)*1000);
+        }
+    }
+
+    qemu_mutex_lock_iothread();
+    if (s->state == MIG_STATE_COMPLETED) {
+        int64_t end_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+        s->total_time = end_time - s->total_time;
+        s->downtime = end_time - start_time;
+        runstate_set(RUN_STATE_POSTMIGRATE);
+        s->state = MIG_STATE_NONE;
+        vm_start();
+    } else {
+        if (old_vm_running) {
+            vm_start();
+        }
+    }
+    qemu_bh_schedule(s->cleanup_bh);
+    qemu_mutex_unlock_iothread();
+
+    return NULL;
+}
+
+
+void clone_fd_error(MigrationState *s)
+{
+    DPRINTF("setting error state\n");
+    assert(s->file == NULL);
+    s->state = MIG_STATE_ERROR;
+    trace_migrate_set_state(MIG_STATE_ERROR);
+    notifier_list_notify(&migration_state_notifiers, s);
+}
+
+void qmp_clone(const char *uri, Error **errp)
+{
+    Error *local_err = NULL;
+    MigrationState *s = migrate_get_current();
+    MigrationParams params;
+    const char *p;
+
+    params.blk = false;
+    params.shared = false;
+
+    if (s->state == MIG_STATE_ACTIVE || s->state == MIG_STATE_SETUP ||
+        s->state == MIG_STATE_CANCELLING) {
+        error_set(errp, QERR_MIGRATION_ACTIVE);
+        return;
+    }
+
+    if (qemu_savevm_state_blocked(errp)) {
+        return;
+    }
+
+    if (migration_blockers) {
+        *errp = error_copy(migration_blockers->data);
+        return;
+    }
+
+    s = migrate_init(&params);
+
+    if (strstart(uri, "unix:", &p)) {
+        unix_start_outgoing_clone(s, p, &local_err);
+    } else {
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE, "uri", "a valid clone protocol");
+        s->state = MIG_STATE_ERROR;
+        return;
+    }
+
+    if (local_err) {
+        migrate_fd_error(s);
+        error_propagate(errp, local_err);
+        return;
+    }
+}
+
+void clone_fd_connect(MigrationState *s)
+{
+    s->state = MIG_STATE_SETUP;
+
+    /* This is a best 1st approximation. ns to ms */
+    s->expected_downtime = max_downtime/1000000;
+    s->cleanup_bh = qemu_bh_new(migrate_fd_cleanup, s);
+
+    qemu_file_set_rate_limit(s->file,
+                             s->bandwidth_limit / XFER_LIMIT_RATIO);
+
+    /* Notify before starting migration thread */
+    notifier_list_notify(&migration_state_notifiers, s);
+
+    qemu_thread_create(&s->thread, clone_thread, s,
+                       QEMU_THREAD_JOINABLE);
+}
+
+static void process_incoming_clone_co(void *opaque)
+{
+    QEMUFile *f = opaque;
+    int ret;
+
+    ret = qemu_loadvm_state(f);
+    qemu_fclose(f);
+    free_xbzrle_decoded_buf();
+    if (ret < 0) {
+        fprintf(stderr, "load of migration failed\n");
+        exit(EXIT_FAILURE);
+    }
+    qemu_announce_self();
+    DPRINTF("successfully loaded vm state\n");
+
+    bdrv_clear_incoming_migration_all();
+    /* Make sure all file formats flush their mutable metadata */
+    bdrv_invalidate_cache_all();
+
+    if (autostart) {
+        vm_start();
+    } else {
+        runstate_set(RUN_STATE_PAUSED);
+    }
+}
+
+void process_incoming_clone(QEMUFile *f)
+{
+    Coroutine *co = qemu_coroutine_create(process_incoming_clone_co);
+    int fd = qemu_get_fd(f);
+
+    assert(fd != -1);
+    qemu_set_nonblock(fd);
+    qemu_coroutine_enter(co, f);
 }

@@ -1757,6 +1757,22 @@ show the TPM device
 @end table
 ETEXI
 
+{
+        .name       = "clone",
+        .args_type  = "uri:s",
+        .params     = "uri",
+        .help       = "clone the VM to URI"
+		      "\n\tassuming shared storage between src and destination)",
+        .mhandler.cmd = hmp_clone,
+    },
+
+
+STEXI
+@item clone @var{uri}
+@findex clone
+clone to @var{uri}.
+ETEXI
+
 STEXI
 @item info trace-events
 show available trace events and their state

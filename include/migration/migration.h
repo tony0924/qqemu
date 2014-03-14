@@ -174,4 +174,10 @@ size_t ram_control_save_page(QEMUFile *f, ram_addr_t block_offset,
                              ram_addr_t offset, size_t size,
                              int *bytes_sent);
 
+void clone_fd_error(MigrationState *s);
+void clone_fd_connect(MigrationState *s);
+void unix_start_incoming_clone(const char *path, Error **errp);
+void unix_start_outgoing_clone(MigrationState *s, const char *host_port, Error **errp);
+void process_incoming_clone(QEMUFile *f);
+
 #endif

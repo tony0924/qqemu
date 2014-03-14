@@ -3457,3 +3457,29 @@ Example:
                    } } ] }
 
 EQMP
+
+    {
+        .name       = "clone",
+        .args_type  = "uri:s",
+    },
+
+SQMP
+clone
+-----
+
+Clone the VM to URI.
+
+Arguments:
+
+- "uri": Destination URI (json-string)
+
+Example:
+
+-> { "execute": "clone", "arguments": { "uri": "tcp:0:4446" } }
+<- { "return": {} }
+
+Notes:
+
+(1) TODO
+
+EQMP
