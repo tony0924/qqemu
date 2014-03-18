@@ -706,7 +706,6 @@ static void *clone_thread(void *opaque)
     MigrationState *s = opaque;
     int64_t initial_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
-    int64_t initial_bytes = 0;
     int64_t max_size = 0;
     int64_t start_time = initial_time;
     bool old_vm_running = false;
@@ -720,10 +719,8 @@ static void *clone_thread(void *opaque)
     DPRINTF("setup complete\n");
 
     while (s->state == MIG_STATE_ACTIVE) {
-        int64_t current_time;
         uint64_t pending_size;
 
-        if (!qemu_file_rate_limit(s->file)) {
             DPRINTF("iterate\n");
             pending_size = qemu_savevm_state_pending(s->file, max_size);
             DPRINTF("pending size %" PRIu64 " max %" PRIu64 "\n",
@@ -756,39 +753,12 @@ static void *clone_thread(void *opaque)
                     break;
                 }
             }
-        }
 
         if (qemu_file_get_error(s->file)) {
             migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_ERROR);
             break;
         }
-        current_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-        if (current_time >= initial_time + BUFFER_DELAY) {
-            uint64_t transferred_bytes = qemu_ftell(s->file) - initial_bytes;
-            uint64_t time_spent = current_time - initial_time;
-            double bandwidth = transferred_bytes / time_spent;
-            max_size = bandwidth * migrate_max_downtime() / 1000000;
-
-            s->mbps = time_spent ? (((double) transferred_bytes * 8.0) /
-                    ((double) time_spent / 1000.0)) / 1000.0 / 1000.0 : -1;
-
-            DPRINTF("transferred %" PRIu64 " time_spent %" PRIu64
-                    " bandwidth %g max_size %" PRId64 "\n",
-                    transferred_bytes, time_spent, bandwidth, max_size);
-            /* if we haven't sent anything, we don't want to recalculate
-               10000 is a small enough number for our purposes */
-            if (s->dirty_bytes_rate && transferred_bytes > 10000) {
-                s->expected_downtime = s->dirty_bytes_rate / bandwidth;
-            }
-
-            qemu_file_reset_rate_limit(s->file);
-            initial_time = current_time;
-            initial_bytes = qemu_ftell(s->file);
-        }
-        if (qemu_file_rate_limit(s->file)) {
-            /* usleep expects microseconds */
-            g_usleep((initial_time + BUFFER_DELAY - current_time)*1000);
-        }
+        qemu_file_reset_rate_limit(s->file);
     }
 
     qemu_mutex_lock_iothread();
@@ -870,8 +840,7 @@ void clone_fd_connect(MigrationState *s)
     s->expected_downtime = max_downtime/1000000;
     s->cleanup_bh = qemu_bh_new(migrate_fd_cleanup, s);
 
-    qemu_file_set_rate_limit(s->file,
-                             s->bandwidth_limit / XFER_LIMIT_RATIO);
+    qemu_file_set_rate_limit(s->file, INT64_MAX);
 
     /* Notify before starting migration thread */
     notifier_list_notify(&migration_state_notifiers, s);
