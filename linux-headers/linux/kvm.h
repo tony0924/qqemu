@@ -1027,6 +1027,10 @@ struct kvm_s390_ucas_mapping {
 #define KVM_ARM_PREFERRED_TARGET  _IOR(KVMIO,  0xaf, struct kvm_vcpu_init)
 #define KVM_GET_REG_LIST	  _IOWR(KVMIO, 0xb0, struct kvm_reg_list)
 
+#define KVM_ARM_GET_S2_PGD_SIZE	  _IOR(KVMIO,  0xb1, int)
+#define KVM_ARM_GET_S2_PGD	  _IOR(KVMIO,  0xb2, void *)
+#define KVM_ARM_SET_S2_PGD	  _IOW(KVMIO,  0xb3, void *)
+
 #define KVM_DEV_ASSIGN_ENABLE_IOMMU	(1 << 0)
 #define KVM_DEV_ASSIGN_PCI_2_3		(1 << 1)
 #define KVM_DEV_ASSIGN_MASK_INTX	(1 << 2)
