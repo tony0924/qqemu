@@ -353,4 +353,8 @@ void kvm_init_irq_routing(KVMState *s);
  *          > 0: irq chip was created
  */
 int kvm_arch_irqchip_create(KVMState *s);
+
+int set_vm_cloning_role(unsigned long role);
+void save_s2_pgd(QEMUFile *f, void* opaque);
+int load_s2_pgd(QEMUFile *f, void *opaque, int version_id);
 #endif

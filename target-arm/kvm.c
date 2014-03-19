@@ -22,6 +22,7 @@
 #include "kvm_arm.h"
 #include "cpu.h"
 #include "hw/arm/arm.h"
+#include "migration/qemu-file.h"
 
 const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
     KVM_CAP_LAST_INFO
@@ -429,4 +430,44 @@ int kvm_arch_irqchip_create(KVMState *s)
     }
 
     return 0;
+}
+
+int set_vm_cloning_role(unsigned long role)
+{
+	KVMState *s = kvm_state;
+	return kvm_vm_ioctl(s, KVM_ARM_SET_CLONING_ROLE, role);
+}
+
+void save_s2_pgd(QEMUFile *f, void* opaque)
+{
+	int s2_size;
+	KVMState *s = kvm_state;
+	void* pgd;
+
+	s2_size = kvm_vm_ioctl(s, KVM_ARM_GET_S2_PGD_SIZE);
+	pgd = g_malloc(s2_size);
+	kvm_vm_ioctl(s, KVM_ARM_GET_S2_PGD, pgd);
+	/* TODO: handle return != 0*/
+
+	qemu_put_be32(f, s2_size);
+	qemu_put_buffer(f, pgd, s2_size);
+
+	g_free(pgd);
+}
+
+int load_s2_pgd(QEMUFile *f, void *opaque, int version_id)
+{
+	int s2_size;
+	void *pgd;
+	/* KVMState *s = kvm_state; */
+
+	s2_size = qemu_get_be32(f);
+	pgd = g_malloc(s2_size);
+	qemu_get_buffer(f, pgd, s2_size);
+
+	/* kvm_vm_ioctl(s, KVM_ARM_SET_S2_PGD, pgd); */
+
+	g_free(pgd);
+
+	return 0;
 }
