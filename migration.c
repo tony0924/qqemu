@@ -710,7 +710,6 @@ static void *clone_thread(void *opaque)
     int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
     int64_t max_size = 0;
     int64_t start_time = initial_time;
-    bool old_vm_running = false;
 
     register_savevm(NULL, "s2_pgd", 0, 0, save_s2_pgd, load_s2_pgd, NULL);
 
@@ -734,25 +733,15 @@ static void *clone_thread(void *opaque)
             if (pending_size && pending_size >= max_size) {
                 qemu_savevm_state_iterate(s->file);
             } else {
-                int ret;
-
                 DPRINTF("done iterating\n");
                 qemu_mutex_lock_iothread();
                 start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
                 qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER);
-                old_vm_running = runstate_is_running();
+                vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
 
-                ret = vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
-                if (ret >= 0) {
-                    qemu_file_set_rate_limit(s->file, INT64_MAX);
-                    qemu_savevm_state_complete(s->file);
-                }
+                qemu_file_set_rate_limit(s->file, INT64_MAX);
+                qemu_savevm_state_complete(s->file);
                 qemu_mutex_unlock_iothread();
-
-                if (ret < 0) {
-                    migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_ERROR);
-                    break;
-                }
 
                 if (!qemu_file_get_error(s->file)) {
                     migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_COMPLETED);
@@ -776,9 +765,7 @@ static void *clone_thread(void *opaque)
         s->state = MIG_STATE_NONE;
         vm_start();
     } else {
-        if (old_vm_running) {
-            vm_start();
-        }
+        vm_start();
     }
     qemu_bh_schedule(s->cleanup_bh);
     qemu_mutex_unlock_iothread();
