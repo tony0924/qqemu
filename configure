@@ -3334,7 +3334,6 @@ EOF
 if compile_prog "" "" ; then
     madvise=yes
 fi
-madvise=no
 
 ##########################################
 # check if we have posix_madvise
