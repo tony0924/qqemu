@@ -432,12 +432,6 @@ int kvm_arch_irqchip_create(KVMState *s)
     return 0;
 }
 
-int set_vm_cloning_role(unsigned long role)
-{
-	KVMState *s = kvm_state;
-	return kvm_vm_ioctl(s, KVM_ARM_SET_CLONING_ROLE, role);
-}
-
 void save_s2_pgd(QEMUFile *f, void* opaque)
 {
 	int s2_size;

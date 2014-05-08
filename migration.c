@@ -719,7 +719,7 @@ static void *clone_thread(void *opaque)
     s->setup_time = qemu_clock_get_ms(QEMU_CLOCK_HOST) - setup_start;
     migrate_set_state(s, MIG_STATE_SETUP, MIG_STATE_ACTIVE);
 
-    set_vm_cloning_role(KVM_ARM_CLONING_ROLE_SOURCE);
+    kvm_set_cloning_role(KVM_ARM_CLONING_ROLE_SOURCE);
 
     DPRINTF("setup complete\n");
 
@@ -849,7 +849,7 @@ static void process_incoming_clone_co(void *opaque)
     int ret;
 
     register_savevm(NULL, "s2_pgd", 0, 0, save_s2_pgd, load_s2_pgd, NULL);
-    set_vm_cloning_role(KVM_ARM_CLONING_ROLE_TARGET);
+    kvm_set_cloning_role(KVM_ARM_CLONING_ROLE_TARGET);
 
     ret = qemu_loadvm_state(f);
     qemu_fclose(f);

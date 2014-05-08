@@ -104,6 +104,7 @@ struct KVMState
     QTAILQ_HEAD(msi_hashtab, KVMMSIRoute) msi_hashtab[KVM_MSI_HASHTAB_SIZE];
     bool direct_msi;
 #endif
+    int cloning_role;
 };
 
 KVMState *kvm_state;
@@ -1515,6 +1516,8 @@ int kvm_init(void)
         goto err;
     }
 
+    s->cloning_role = 0;
+
     kvm_state = s;
     memory_listener_register(&kvm_memory_listener, &address_space_memory);
     memory_listener_register(&kvm_io_listener, &address_space_io);
@@ -2103,4 +2106,23 @@ int kvm_create_device(KVMState *s, uint64_t type, bool test)
     }
 
     return test ? 0 : create_dev.fd;
+}
+
+void kvm_set_cloning_role(int role)
+{
+    int ret;
+
+    if (kvm_state->cloning_role) {
+        fprintf(stderr, "We cannot change cloning role from %d to %d\n",
+                kvm_state->cloning_role, role);
+        return;
+    }
+    ret = kvm_vm_ioctl(kvm_state, KVM_ARM_SET_CLONING_ROLE, role);
+    if (ret == 0)
+        kvm_state->cloning_role = role;
+}
+
+int kvm_get_cloning_role(void)
+{
+    return kvm_state->cloning_role;
 }
