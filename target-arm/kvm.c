@@ -457,18 +457,15 @@ void save_s2_pgd(QEMUFile *f, void* opaque)
 
 int load_s2_pgd(QEMUFile *f, void *opaque, int version_id)
 {
-	int s2_size, ret, i;
+	int s2_size;
 	void *pgd;
-	KVMState *s = kvm_state;
+	/* KVMState *s = kvm_state; */
 
 	s2_size = qemu_get_be32(f);
 	pgd = g_malloc(s2_size);
 	qemu_get_buffer(f, pgd, s2_size);
 
-	ret = kvm_vm_ioctl(s, KVM_ARM_SET_S2_PGD, pgd);
-	if (ret)
-		fprintf(stderr, "failed to ioctl KVM_ARM_SET_S2_PGD with ret = %d %s\n",
-				ret, strerror(errno));
+	/* kvm_vm_ioctl(s, KVM_ARM_SET_S2_PGD, pgd); */
 
 	g_free(pgd);
 
