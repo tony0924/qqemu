@@ -711,15 +711,16 @@ static void *clone_thread(void *opaque)
     int64_t max_size = 0;
     int64_t start_time = initial_time;
 
-    register_savevm(NULL, "s2_pgd", 0, 0, save_s2_pgd, load_s2_pgd, NULL);
 
     DPRINTF("beginning savevm\n");
+
+    kvm_set_cloning_role(KVM_ARM_CLONING_ROLE_SOURCE);
+    save_s2_pgd(s->file, NULL);
+
     qemu_savevm_state_begin(s->file, &s->params);
 
     s->setup_time = qemu_clock_get_ms(QEMU_CLOCK_HOST) - setup_start;
     migrate_set_state(s, MIG_STATE_SETUP, MIG_STATE_ACTIVE);
-
-    kvm_set_cloning_role(KVM_ARM_CLONING_ROLE_SOURCE);
 
     DPRINTF("setup complete\n");
 
@@ -770,7 +771,6 @@ static void *clone_thread(void *opaque)
     qemu_bh_schedule(s->cleanup_bh);
     qemu_mutex_unlock_iothread();
 
-    unregister_savevm(NULL, "s2_pgd", NULL);
     return NULL;
 }
 
@@ -848,9 +848,9 @@ static void process_incoming_clone_co(void *opaque)
     QEMUFile *f = opaque;
     int ret;
 
-    register_savevm(NULL, "s2_pgd", 0, 0, save_s2_pgd, load_s2_pgd, NULL);
     kvm_set_cloning_role(KVM_ARM_CLONING_ROLE_TARGET);
 
+    load_s2_pgd(f, NULL, 0);
     ret = qemu_loadvm_state(f);
     qemu_fclose(f);
     free_xbzrle_decoded_buf();
@@ -860,7 +860,6 @@ static void process_incoming_clone_co(void *opaque)
     }
     qemu_announce_self();
     DPRINTF("successfully loaded vm state\n");
-    unregister_savevm(NULL, "s2_pgd", NULL);
 
     bdrv_clear_incoming_migration_all();
     /* Make sure all file formats flush their mutable metadata */
