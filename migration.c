@@ -711,6 +711,7 @@ static void *clone_thread(void *opaque)
     int64_t max_size = 0;
     int64_t start_time = initial_time;
 
+    unregister_savevm(NULL, "ram", NULL);
 
     DPRINTF("beginning savevm\n");
 
@@ -771,6 +772,7 @@ static void *clone_thread(void *opaque)
     qemu_bh_schedule(s->cleanup_bh);
     qemu_mutex_unlock_iothread();
 
+    register_savevm_live(NULL, "ram", 0, 4, &savevm_ram_handlers, NULL);
     return NULL;
 }
 
