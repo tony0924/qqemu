@@ -359,4 +359,5 @@ void save_s2_pgd(QEMUFile *f, void* opaque);
 int load_s2_pgd(QEMUFile *f, void *opaque, int version_id);
 void kvm_set_cloning_role(int role);
 int kvm_get_cloning_role(void);
+int kvm_arm_unshare_gfns(uint64_t hva, uint64_t gpa, uint64_t len);
 #endif

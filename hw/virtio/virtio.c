@@ -19,6 +19,7 @@
 #include "hw/virtio/virtio.h"
 #include "qemu/atomic.h"
 #include "hw/virtio/virtio-bus.h"
+#include "sysemu/kvm.h"
 
 /*
  * The alignment to use between consumer and producer parts of vring.
@@ -932,6 +933,10 @@ int virtio_load(VirtIODevice *vdev, QEMUFile *f)
         if (vdev->vq[i].pa) {
             uint16_t nheads;
             virtqueue_init(&vdev->vq[i]);
+            if (kvm_get_cloning_role() == KVM_ARM_CLONING_ROLE_TARGET) {
+                kvm_arm_unshare_gfns(0, vdev->vq[i].pa,
+                        virtio_queue_get_ring_size(vdev, i));
+            }
             nheads = vring_avail_idx(&vdev->vq[i]) - vdev->vq[i].last_avail_idx;
             /* Check it isn't doing very strange things with descriptor numbers. */
             if (nheads > vdev->vq[i].vring.num) {

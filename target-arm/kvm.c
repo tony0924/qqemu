@@ -468,3 +468,26 @@ int load_s2_pgd(QEMUFile *f, void *opaque, int version_id)
 
 	return 0;
 }
+
+/**
+ * we need to unshare those pages used by virtio ring buffer,
+ * in case qemu wants to access before VM access
+ */
+int kvm_arm_unshare_gfns(uint64_t hva, uint64_t gpa, uint64_t len)
+{
+	int ret = 0;
+	KVMState *s = kvm_state;
+	struct kvm_userspace_memory_region mem;
+
+	mem.guest_phys_addr = gpa;
+	mem.userspace_addr = hva;
+	/* the size will be aligned in kvm */
+	mem.memory_size = len;
+
+	ret = kvm_vm_ioctl(s, KVM_ARM_UNSHARE_GFNS, &mem);
+	if (ret)
+		fprintf(stderr, "failed to ioctl KVM_ARM_UNSHARE_GFNS with ret = %d %s\n",
+				ret, strerror(errno));
+
+	return ret;
+}
