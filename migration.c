@@ -708,7 +708,6 @@ static void *clone_thread(void *opaque)
     MigrationState *s = opaque;
     int64_t initial_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     int64_t setup_start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
-    int64_t max_size = 0;
     int64_t start_time = initial_time;
 
     unregister_savevm(NULL, "ram", NULL);
@@ -725,38 +724,25 @@ static void *clone_thread(void *opaque)
 
     DPRINTF("setup complete\n");
 
-    while (s->state == MIG_STATE_ACTIVE) {
-        uint64_t pending_size;
+    /* as in live-migration stage3 */
+    qemu_mutex_lock_iothread();
 
-            DPRINTF("iterate\n");
-            pending_size = qemu_savevm_state_pending(s->file, max_size);
-            DPRINTF("pending size %" PRIu64 " max %" PRIu64 "\n",
-                    pending_size, max_size);
-            if (pending_size && pending_size >= max_size) {
-                qemu_savevm_state_iterate(s->file);
-            } else {
-                DPRINTF("done iterating\n");
-                qemu_mutex_lock_iothread();
-                start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-                qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER);
-                vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
+    start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
+    qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER);
+    vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
 
-                qemu_file_set_rate_limit(s->file, INT64_MAX);
-                qemu_savevm_state_complete(s->file);
-                qemu_mutex_unlock_iothread();
+    qemu_file_set_rate_limit(s->file, INT64_MAX);
+    qemu_savevm_state_complete(s->file);
+    qemu_mutex_unlock_iothread();
 
-                if (!qemu_file_get_error(s->file)) {
-                    migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_COMPLETED);
-                    break;
-                }
-            }
-
-        if (qemu_file_get_error(s->file)) {
-            migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_ERROR);
-            break;
-        }
-        qemu_file_reset_rate_limit(s->file);
+    if (!qemu_file_get_error(s->file)) {
+        migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_COMPLETED);
     }
+
+    if (qemu_file_get_error(s->file)) {
+        migrate_set_state(s, MIG_STATE_ACTIVE, MIG_STATE_ERROR);
+    }
+    qemu_file_reset_rate_limit(s->file);
 
     qemu_mutex_lock_iothread();
     if (s->state == MIG_STATE_COMPLETED) {
