@@ -1015,14 +1015,18 @@ done:
     return ret;
 }
 
-SaveVMHandlers savevm_ram_handlers = {
-    .save_live_setup = ram_save_setup,
-    .save_live_iterate = ram_save_iterate,
-    .save_live_complete = ram_save_complete,
-    .save_live_pending = ram_save_pending,
-    .load_state = ram_load,
-    .cancel = ram_migration_cancel,
-};
+SaveVMHandlers *savevm_ram_handlers;
+void init_savevm_ram_handlers(void)
+{
+    savevm_ram_handlers = g_malloc(sizeof(SaveVMHandlers));
+
+    savevm_ram_handlers->save_live_setup = ram_save_setup;
+    savevm_ram_handlers->save_live_iterate = ram_save_iterate;
+    savevm_ram_handlers->save_live_complete = ram_save_complete;
+    savevm_ram_handlers->save_live_pending = ram_save_pending;
+    savevm_ram_handlers->load_state = ram_load;
+    savevm_ram_handlers->cancel = ram_migration_cancel;
+}
 
 struct soundhw {
     const char *name;

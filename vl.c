@@ -4137,7 +4137,8 @@ int main(int argc, char **argv, char **envp)
     default_drive(default_floppy, snapshot, IF_FLOPPY, 0, FD_OPTS);
     default_drive(default_sdcard, snapshot, IF_SD, 0, SD_OPTS);
 
-    register_savevm_live(NULL, "ram", 0, 4, &savevm_ram_handlers, NULL);
+    init_savevm_ram_handlers();
+    register_savevm_live(NULL, "ram", 0, 4, savevm_ram_handlers, NULL);
 
     if (nb_numa_nodes > 0) {
         int i;

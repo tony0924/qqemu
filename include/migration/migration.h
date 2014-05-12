@@ -113,7 +113,8 @@ void free_xbzrle_decoded_buf(void);
 
 void acct_update_position(QEMUFile *f, size_t size, bool zero);
 
-extern SaveVMHandlers savevm_ram_handlers;
+extern SaveVMHandlers *savevm_ram_handlers;
+void init_savevm_ram_handlers(void);
 
 uint64_t dup_mig_bytes_transferred(void);
 uint64_t dup_mig_pages_transferred(void);
