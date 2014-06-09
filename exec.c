@@ -2339,12 +2339,13 @@ void *cpu_physical_memory_map(hwaddr addr,
                               int is_write)
 {
     /* For the case that QEMU access the page before cloned VM CoA,
-       we need to unshare it in advance.
+       we need to unshare it in advance. Or the source QEMU write to GPA
+       which is not yet CoA.
        XXX: Is there a efficient way to check whether the page is unshared
        or not. */
-    if (kvm_get_cloning_role() == 2) {
+    if (kvm_get_cloning_role())
         kvm_arm_unshare_gfns(0, addr&0xfffff000, *plen);
-    }
+
     return address_space_map(&address_space_memory, addr, plen, is_write);
 }
 
