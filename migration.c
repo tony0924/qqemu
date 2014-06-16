@@ -750,11 +750,9 @@ static void *clone_thread(void *opaque)
         s->total_time = end_time - s->total_time;
         s->downtime = end_time - start_time;
         runstate_set(RUN_STATE_POSTMIGRATE);
-        s->state = MIG_STATE_NONE;
-        vm_start();
-    } else {
-        vm_start();
-    }
+    } 
+
+    vm_start();
     qemu_bh_schedule(s->cleanup_bh);
     qemu_mutex_unlock_iothread();
 
